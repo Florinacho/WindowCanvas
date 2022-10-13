@@ -58,6 +58,11 @@ typedef WindowEvent WEvent;
 
 class WindowCanvas {
 #if defined (_WIN32)
+	HWND hwnd;
+	HDC hdc;
+	HDC hDCMem;
+	HBITMAP bitmap;
+	HGDIOBJ oldBitmap;
 	WindowEvent* eventPtr;
 #else
 	Display* display;

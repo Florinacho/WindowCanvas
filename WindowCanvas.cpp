@@ -3,52 +3,99 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if not defined(GWL_USERDATA)
+#define GWL_USERDATA GWLP_USERDATA
+#endif
+
 #if defined(_WIN32)
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	const uint32_t WINDOW_WIDTH  = 1024; // TODO: calculate this
-	const uint32_t WINDOW_HEIGHT = 720;
+	// const uint32_t WINDOW_WIDTH  = 1024; // TODO: calculate this
+	// const uint32_t WINDOW_HEIGHT = 720;
 
-	HDC hDCMem = (HDC)GetWindowLongPtr(hwnd, GWL_USERDATA);
+	// HDC hDCMem = (HDC)GetWindowLongPtr(hwnd, GWL_USERDATA);
+	WindowCanvas* window = (WindowCanvas*)GetWindowLongPtr(hwnd, GWL_USERDATA);
 
 	switch (uMsg) {
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
 	case WM_MOUSEMOVE :
-		WMOnCursorEvent(LOWORD(lParam), HIWORD(lParam));
+		//WMOnCursorEvent(LOWORD(lParam), HIWORD(lParam));
 		return 0;
 	case WM_LBUTTONDOWN :
-		WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_PRESSED);
+		//WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_PRESSED);
 		return 0;
 	case WM_LBUTTONUP :
-		WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_RELEASED);
+		//WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_RELEASED);
 		return 0;
 	case WM_MOUSEWHEEL :
-		GUIOnMouseWheelEvent(GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? -1 : 1);
+		//GUIOnMouseWheelEvent(GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? -1 : 1);
 		return 0;
 	case WM_KEYDOWN :
-		if (wParam == VK_ESCAPE) {
-			PostQuitMessage(0);
-		}
-		GUIOnKeyEvent(wParam, true);
+		//if (wParam == VK_ESCAPE) {
+		//	PostQuitMessage(0);
+		//}
+		//GUIOnKeyEvent(wParam, true);
 		return 0;
 	case WM_CHAR :
-		GUIOnCharEvent(wParam);
+		//GUIOnCharEvent(wParam);
 		return 0;
 	case WM_PAINT:
-		HDC hdc = GetDC(hwnd);
-		ExtFloodFill(hdc, 0, 0, RGB(255, 255, 255), FLOODFILLSURFACE);
-		BitBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hDCMem, 0, 0, SRCCOPY);
-		ReleaseDC(hwnd, hdc);
+		//HDC hdc = GetDC(hwnd);
+		//ExtFloodFill(hdc, 0, 0, RGB(255, 255, 255), FLOODFILLSURFACE);
+		//BitBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hDCMem, 0, 0, SRCCOPY);
+		//ReleaseDC(hwnd, hdc);
 		return 0;
 	}
 
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 #endif // _WIN32
-
+#include <stdio.h>
 int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, const char* title) {
 #if defined(_WIN32)
+	// Register the window class.
+	const char CLASS_NAME[]  = "Sample Window Class";
+	const DWORD dwstyle = WS_CAPTION | WS_POPUPWINDOW | WS_MINIMIZEBOX | WS_VISIBLE;
+
+	HINSTANCE hInstance = GetModuleHandle(NULL);
+
+	WNDCLASS wc = { };
+	wc.lpfnWndProc   = WindowProc;
+	wc.hInstance     = hInstance;
+	wc.lpszClassName = CLASS_NAME;
+	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+	RegisterClass(&wc);
+
+	RECT r = {0, 0, (LONG)width, (LONG)height};
+	AdjustWindowRect(&r, dwstyle, false);
+
+	// Create the window.
+	hwnd = CreateWindow(CLASS_NAME, "Win32 imGUI example", dwstyle, 0, 0, r.right - r.left, r.bottom - r.top, NULL, NULL, hInstance, NULL);
+	if (hwnd == NULL) {
+		printf("Win32 error: Unable to create window.\n");
+		return 1;
+	}
+
+	// Create bitmap
+	hdc = GetDC(hwnd);
+	if (hdc == 0) {
+		printf("Win32 error: Unable to get display handle.\n");
+		return -1;
+	}
+	hDCMem = CreateCompatibleDC(hdc);
+	SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)this);
+
+	BITMAPINFO bitmapinfo = {0};
+	bitmapinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bitmapinfo.bmiHeader.biWidth = width;
+	bitmapinfo.bmiHeader.biHeight = -height;
+	bitmapinfo.bmiHeader.biPlanes = 1;
+	bitmapinfo.bmiHeader.biBitCount = depth;
+
+	pixelBufferLength = width * height * depth / 8;
+	bitmap = ::CreateDIBSection(hDCMem, &bitmapinfo, DIB_RGB_COLORS, (VOID**)&pixelBuffer, NULL, 0);
+	oldBitmap = ::SelectObject(hDCMem, bitmap);
 #else // __linux__
 	static const uint32_t DEFAULT_MARGIN = 5;
 	display = XOpenDisplay(NULL);

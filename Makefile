@@ -6,7 +6,8 @@ C_FLAGS=-O3 -g3
 #-Wl,-subsystem,windows
 L_FLAGS=-flto
 
-LIBS=-lX11#-lgdi32
+LIBS=-lX11
+#LIBS=-lgdi32
 
 SOURCE_FILES=WindowCanvas.cpp main.cpp
 
