@@ -24,11 +24,10 @@ int main() {
 				break;
 			case WEvent::KeyPressed :
 				printf("KeyPressed 0x%X\n", event.keyCode);
-				if (event.getAscii(c)) {
-					if (c == 'q') {
+				if (event.ascii != '\0') {
+					printf("Character '%c'\n", event.ascii);
+					if (event.ascii == 'q') {
 						running = false;
-					} else {
-						printf("Character '%c'\n", c);
 					}
 				}
 				break;

@@ -41,13 +41,12 @@ struct WindowEvent {
 	union {
 		int32_t y;
 		uint32_t height;
+		char ascii;
 	};
 	
 	WindowEvent(Type type = Unknown, int lParam = 0, int wParam = 0) 
 		: type(type), x(lParam), y(wParam) {
 	}
-	
-	bool getAscii(char& ascii) const;
 };
 
 typedef WindowEvent WEvent;

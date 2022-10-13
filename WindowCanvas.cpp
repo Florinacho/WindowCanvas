@@ -2,34 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-
-bool WindowEvent::getAscii(char& ascii) const {
-	char text[8];
-	int count = 0;
-	
-	if ((type != KeyPressed) && (type != KeyReleased)) {
-		return 0;
-	}
-#if defined(_WIN32)
-    static BYTE keyState[256];
-    GetKeyboardState(keyState);
-	count = ToAscii(keyCode, MapVirtualKey(keyCode, MAPVK_VK_TO_VSC), keyState, (LPWORD)text, 0);
-#else // __linux__
-	count = XLookupString(&xEvent.xkey, text, sizeof(text), &key, 0);
-#endif
-	if (count == 1) {
-		switch (text[0]) {
-		case 0x1B : // escape
-		case 0x08 : // backspace
-		case 0x7F : // delete
-			return false;
-		default :
-			ascii = text[0];
-			return true;
-		}
-	}
-	return false;
-}
+#include <assert.h>
 
 #if defined(_WIN32)
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -38,7 +11,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
 	WindowEvent& event = *window->eventPtr;
-
+#if defined(_WIN32)
+    static BYTE keyState[256];
+	char text[8];
+#endif // _WIN32
 	switch (uMsg) {
 	case WM_CLOSE:
 		event.type = WindowEvent::WindowClose;
@@ -78,6 +54,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 	case WM_KEYDOWN :
 		event.type = WindowEvent::KeyPressed;
 		event.keyCode = wParam;
+
+		GetKeyboardState(keyState);
+		if (ToAscii(keyCode, MapVirtualKey(keyCode, MAPVK_VK_TO_VSC), keyState, (LPWORD)text, 0) == 1) {
+			switch (text[0]) {
+			case 0x1B : // escape
+			case 0x08 : // backspace
+			case 0x7F : // delete
+				event.ascii = '\0';
+				break;
+			default :
+				event.ascii = text[0];
+				break;
+			}
+		} else {
+			event.ascii = '\0';
+		}
 		return 0;
 	case WM_KEYUP :
 		event.type = WindowEvent::KeyReleased;
@@ -169,23 +161,20 @@ int WindowCanvas::uninitialize() {
 	::SelectObject(hDCMem, oldBitmap);
 	DeleteObject(bitmap);
 	DeleteObject(hDCMem);
+	delete [] pixelBuffer;
 	ReleaseDC(hwnd, hdc);
 	DestroyWindow(hwnd);
 #else // __linux__
+	if (xImage != nullptr) {
+		// XImage owns the pixelBuffer
+		XDestroyImage(xImage);
+	}
+	
 	if (display != nullptr) {
 		XFreeGC(display, gc);
 		XDestroyWindow(display, window);
 		XCloseDisplay(display);
 		display = nullptr;
-	}
-	
-	if (xImage != nullptr) {
-		XDestroyImage(xImage);
-	}
-	
-	if (pixelBuffer != nullptr) {
-//		delete [] pixelBuffer;
-//		pixelBuffer = nullptr;
 	}
 #endif
 	return 0;
@@ -216,6 +205,7 @@ void WindowCanvas::setTitle(const char* title) {
 #if defined(_WIN32)
 	SetWindowText(hwnd, title);
 #else // __linux__
+	assert(!"Not implemented");
 #endif
 }
 
@@ -224,6 +214,7 @@ const char* WindowCanvas::getTitle() const {
 #if defined(_WIN32)
 	return (GetWindowText(hwnd, title, sizeof(title)) > 0) ? title : "";
 #else // __linux__
+	assert(!"Not implemented");
 #endif
 	return "";
 }
@@ -253,26 +244,26 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 #else // __linux__
 	XEvent xEvent;
 	KeySym key;
-	char text[1];
+	char text[32];
 	if (XPending(display) > 0) {
 		XNextEvent(display, &xEvent);
 		switch (xEvent.type) {
 		case KeyPress :
-			if (XLookupString(&xEvent.xkey, text, 1, &key, 0) == 1) {
+			event.type = WindowEvent::KeyPressed;
+			event.keyCode = xEvent.xkey.keycode;
+			if (XLookupString(&xEvent.xkey, text, sizeof(text), &key, 0) == 1) {
 				switch (text[0]) {
+				case 0x1B : // escape
+				case 0x08 : // backspace
 				case 0x7F : // delete
-				case 0x8 : // backspace
-					event.type = WindowEvent::KeyPressed;
-					event.keyCode = xEvent.xkey.keycode;
+					event.ascii = '\0';
 					break;
 				default :
-					event.type = WindowEvent::Character;
-					event.chr = text[0];
+					event.ascii = text[0];
 					break;
 				}
 			} else {
-				event.type = WindowEvent::KeyPressed;
-				event.keyCode = xEvent.xkey.keycode;
+				event.ascii = '\0';
 			}
 			ans = true;
 			break;
@@ -290,12 +281,10 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 		case ButtonPress:
 			switch (xEvent.xbutton.button) {
 			case Button4 :
-				event.type = WindowEvent::Wheel;
-				event.value = -1;
+				event.type = WindowEvent::WheelUp;
 				break;
 			case Button5 :
-				event.type = WindowEvent::Wheel;
-				event.value = 1;
+				event.type = WindowEvent::WheelDown;
 				break;
 			default :
 				event.type = WindowEvent::ButtonPressed;
@@ -306,12 +295,15 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 			break;
 		case ButtonRelease:
 			switch (xEvent.xbutton.button) {
-			case Button1 :
+			case Button4 :
+			case Button5 :
+				break;
+			default :
 				event.type = WindowEvent::ButtonReleased;
 				event.button = xEvent.xbutton.button;
+				ans = true;
 				break;
 			}
-			ans = true;
 			break;
 		}
 	}
