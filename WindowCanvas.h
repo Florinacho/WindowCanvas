@@ -17,8 +17,6 @@ struct WindowEvent {
 		Unknown, 
 		
 		// Window events
-		WindowMove,
-		WindowSize,
 		WindowClose,
 		
 		// Keyboard events
@@ -29,10 +27,8 @@ struct WindowEvent {
 		CursorMove,
 		ButtonPressed,
 		ButtonReleased,
-		Wheel,
-		
-		// character key event
-		Character,
+		WheelDown,
+		WheelUp,
 	};
 	
 	Type type;
@@ -41,17 +37,17 @@ struct WindowEvent {
 		uint32_t width;
 		uint32_t keyCode;
 		uint32_t button;
-		char chr;
 	};
 	union {
 		int32_t y;
 		uint32_t height;
-		int32_t value;
 	};
 	
 	WindowEvent(Type type = Unknown, int lParam = 0, int wParam = 0) 
 		: type(type), x(lParam), y(wParam) {
 	}
+	
+	bool getAscii(char& ascii) const;
 };
 
 typedef WindowEvent WEvent;
@@ -64,6 +60,8 @@ class WindowCanvas {
 	HBITMAP bitmap;
 	HGDIOBJ oldBitmap;
 	WindowEvent* eventPtr;
+	
+	friend LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
 #else
 	Display* display;
 	Window window;
@@ -88,6 +86,12 @@ public:
 	
 	~WindowCanvas();
 	
+	uint32_t getWidth() const;
+	
+	uint32_t getHeight() const;
+	
+	uint32_t getDepth() const;
+	
 	void setTitle(const char* title = "");
 	
 	const char* getTitle() const;
@@ -111,7 +115,6 @@ public:
 	
 	/*
 		Clear the internal pixel buffer by filling it with 0.
-		This will result in a black screen.
 	*/
 	void clear();
 	

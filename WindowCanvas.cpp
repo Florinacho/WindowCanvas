@@ -3,88 +3,127 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if not defined(GWL_USERDATA)
-#define GWL_USERDATA GWLP_USERDATA
+bool WindowEvent::getAscii(char& ascii) const {
+	char text[8];
+	int count = 0;
+	
+	if ((type != KeyPressed) && (type != KeyReleased)) {
+		return 0;
+	}
+#if defined(_WIN32)
+    static BYTE keyState[256];
+    GetKeyboardState(keyState);
+	count = ToAscii(keyCode, MapVirtualKey(keyCode, MAPVK_VK_TO_VSC), keyState, (LPWORD)text, 0);
+#else // __linux__
+	count = XLookupString(&xEvent.xkey, text, sizeof(text), &key, 0);
 #endif
+	if (count == 1) {
+		switch (text[0]) {
+		case 0x1B : // escape
+		case 0x08 : // backspace
+		case 0x7F : // delete
+			return false;
+		default :
+			ascii = text[0];
+			return true;
+		}
+	}
+	return false;
+}
 
 #if defined(_WIN32)
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	// const uint32_t WINDOW_WIDTH  = 1024; // TODO: calculate this
-	// const uint32_t WINDOW_HEIGHT = 720;
-
-	// HDC hDCMem = (HDC)GetWindowLongPtr(hwnd, GWL_USERDATA);
 	WindowCanvas* window = (WindowCanvas*)GetWindowLongPtr(hwnd, GWL_USERDATA);
+	if (window == nullptr) {
+		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	}
+	WindowEvent& event = *window->eventPtr;
 
 	switch (uMsg) {
-	case WM_DESTROY:
-		PostQuitMessage(0);
+	case WM_CLOSE:
+		event.type = WindowEvent::WindowClose;
 		return 0;
 	case WM_MOUSEMOVE :
-		//WMOnCursorEvent(LOWORD(lParam), HIWORD(lParam));
+		event.type = WindowEvent::CursorMove;
+		event.x = LOWORD(lParam);
+		event.y = HIWORD(lParam);
 		return 0;
 	case WM_LBUTTONDOWN :
-		//WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_PRESSED);
+		event.type = WindowEvent::ButtonPressed;
+		event.button = 1;
 		return 0;
 	case WM_LBUTTONUP :
-		//WMOnButtonEvent(GUI_BUTTON_LEFT, GUI_BUTTON_RELEASED);
+		event.type = WindowEvent::ButtonReleased;
+		event.button = 1;
+		return 0;
+	case WM_MBUTTONDOWN :
+		event.type = WindowEvent::ButtonPressed;
+		event.button = 2;
+		return 0;
+	case WM_MBUTTONUP :
+		event.type = WindowEvent::ButtonReleased;
+		event.button = 2;
+		return 0;
+	case WM_RBUTTONDOWN :
+		event.type = WindowEvent::ButtonPressed;
+		event.button = 3;
+		return 0;
+	case WM_RBUTTONUP :
+		event.type = WindowEvent::ButtonReleased;
+		event.button = 3;
 		return 0;
 	case WM_MOUSEWHEEL :
-		//GUIOnMouseWheelEvent(GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? -1 : 1);
+		event.type = (GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? WindowEvent::WheelUp : WindowEvent::WheelDown);
 		return 0;
 	case WM_KEYDOWN :
-		//if (wParam == VK_ESCAPE) {
-		//	PostQuitMessage(0);
-		//}
-		//GUIOnKeyEvent(wParam, true);
+		event.type = WindowEvent::KeyPressed;
+		event.keyCode = wParam;
 		return 0;
-	case WM_CHAR :
-		//GUIOnCharEvent(wParam);
-		return 0;
-	case WM_PAINT:
-		//HDC hdc = GetDC(hwnd);
-		//ExtFloodFill(hdc, 0, 0, RGB(255, 255, 255), FLOODFILLSURFACE);
-		//BitBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hDCMem, 0, 0, SRCCOPY);
-		//ReleaseDC(hwnd, hdc);
+	case WM_KEYUP :
+		event.type = WindowEvent::KeyReleased;
+		event.keyCode = wParam;
 		return 0;
 	}
 
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 #endif // _WIN32
-#include <stdio.h>
+
 int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, const char* title) {
 #if defined(_WIN32)
 	// Register the window class.
-	const char CLASS_NAME[]  = "Sample Window Class";
 	const DWORD dwstyle = WS_CAPTION | WS_POPUPWINDOW | WS_MINIMIZEBOX | WS_VISIBLE;
-
-	HINSTANCE hInstance = GetModuleHandle(NULL);
 
 	WNDCLASS wc = { };
 	wc.lpfnWndProc   = WindowProc;
-	wc.hInstance     = hInstance;
-	wc.lpszClassName = CLASS_NAME;
-	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+	wc.hInstance     = GetModuleHandle(nullptr);
+	wc.lpszClassName = "Sample Window Class";
+	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
 	RegisterClass(&wc);
 
 	RECT r = {0, 0, (LONG)width, (LONG)height};
 	AdjustWindowRect(&r, dwstyle, false);
 
 	// Create the window.
-	hwnd = CreateWindow(CLASS_NAME, "Win32 imGUI example", dwstyle, 0, 0, r.right - r.left, r.bottom - r.top, NULL, NULL, hInstance, NULL);
-	if (hwnd == NULL) {
-		printf("Win32 error: Unable to create window.\n");
+	hwnd = CreateWindow(wc.lpszClassName, 
+	                    "Win32 imGUI example", 
+	                    dwstyle, 
+	                    0, 0, r.right - r.left, r.bottom - r.top,
+	                    nullptr,
+	                    nullptr,
+	                    wc.hInstance,
+	                    nullptr);
+	if (hwnd == nullptr) {
 		return 1;
 	}
+	SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)this);
 
 	// Create bitmap
 	hdc = GetDC(hwnd);
 	if (hdc == 0) {
-		printf("Win32 error: Unable to get display handle.\n");
-		return -1;
+		return 2;
 	}
 	hDCMem = CreateCompatibleDC(hdc);
-	SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)this);
 
 	BITMAPINFO bitmapinfo = {0};
 	bitmapinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -94,11 +133,11 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 	bitmapinfo.bmiHeader.biBitCount = depth;
 
 	pixelBufferLength = width * height * depth / 8;
-	bitmap = ::CreateDIBSection(hDCMem, &bitmapinfo, DIB_RGB_COLORS, (VOID**)&pixelBuffer, NULL, 0);
+	bitmap = ::CreateDIBSection(hDCMem, &bitmapinfo, DIB_RGB_COLORS, (VOID**)&pixelBuffer, nullptr, 0);
 	oldBitmap = ::SelectObject(hDCMem, bitmap);
 #else // __linux__
 	static const uint32_t DEFAULT_MARGIN = 5;
-	display = XOpenDisplay(NULL);
+	display = XOpenDisplay(nullptr);
 	Visual *visual = DefaultVisual(display, 0);
 	window = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, width, height, DEFAULT_MARGIN, 0, 0);
 	XSelectInput(display, window, ExposureMask | ButtonPressMask | ButtonReleaseMask | KeyReleaseMask | KeyPressMask | PointerMotionMask);
@@ -127,6 +166,11 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 
 int WindowCanvas::uninitialize() {
 #if defined(_WIN32)
+	::SelectObject(hDCMem, oldBitmap);
+	DeleteObject(bitmap);
+	DeleteObject(hDCMem);
+	ReleaseDC(hwnd, hdc);
+	DestroyWindow(hwnd);
 #else // __linux__
 	if (display != nullptr) {
 		XFreeGC(display, gc);
@@ -156,10 +200,31 @@ WindowCanvas::~WindowCanvas() {
 	uninitialize();
 }
 
+uint32_t WindowCanvas::getWidth() const {
+	return width;
+}
+
+uint32_t WindowCanvas::getHeight() const {
+	return height;
+}
+
+uint32_t WindowCanvas::getDepth() const {
+	return depth;
+}
+
 void WindowCanvas::setTitle(const char* title) {
+#if defined(_WIN32)
+	SetWindowText(hwnd, title);
+#else // __linux__
+#endif
 }
 
 const char* WindowCanvas::getTitle() const {
+	static char title[128];
+#if defined(_WIN32)
+	return (GetWindowText(hwnd, title, sizeof(title)) > 0) ? title : "";
+#else // __linux__
+#endif
 	return "";
 }
 
@@ -174,6 +239,17 @@ uint32_t WindowCanvas::getPixelBufferLength() const {
 bool WindowCanvas::getEvent(WindowEvent& event) {
 	bool ans = false;
 #if defined(_WIN32)
+    MSG msg;
+	if (PeekMessage(&msg, hwnd, 0, 0, 0)) {
+		GetMessage(&msg, hwnd, 0, 0);
+		eventPtr = &event;
+		eventPtr->type = WindowEvent::Unknown;
+		
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+		
+		ans = (eventPtr->type != WindowEvent::Unknown);
+    }
 #else // __linux__
 	XEvent xEvent;
 	KeySym key;
@@ -244,11 +320,15 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 }
 
 void WindowCanvas::clear() {
+#if defined(_WIN32)
+	//ExtFloodFill(hdc, 0, 0, RGB(0, 0, 0), FLOODFILLSURFACE);
+#endif
 	memset(pixelBuffer, 0, pixelBufferLength);
 }
 
 void WindowCanvas::blit() {
 #if defined(_WIN32)
+	BitBlt(hdc, 0, 0, width, height, hDCMem, 0, 0, SRCCOPY);
 #else // __linux__
 	XPutImage(display, window, gc, xImage, 0, 0, 0, 0, width, height);
 #endif
