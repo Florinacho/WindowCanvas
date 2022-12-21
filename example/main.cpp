@@ -10,14 +10,17 @@
 int main() {
 	WCanvas canvas(800, 600, 32, "Window canvas demo");
 	uint32_t* pixelBuffer = (uint32_t*)canvas.getPixelBuffer();
+	int cx = 0, cy = 0;
+	int px = 350, py = 250;
 
 	WEvent event;
 	bool running = true;
-	char c;
 	
 	while(running) {
 		while (canvas.getEvent(event)) {
 			switch (event.type) {
+			case WEvent::Unknown :
+				break;
 			case WEvent::WindowClose :
 				printf("WindowClose\n");
 				running = false;
@@ -39,9 +42,13 @@ int main() {
 				break;
 			case WEvent::CursorMove :
 				printf("CursorMove %d, %d\n", event.x, event.y);
+				cx = event.x;
+				cy = event.y;
 				break;
 			case WEvent::ButtonPressed :
 				printf("ButtonDown 0x%X\n", event.button);
+				px = cx;
+				py = cy;
 				break;
 			case WEvent::ButtonReleased :
 				printf("ButtonUp 0x%X\n", event.button);
@@ -56,9 +63,9 @@ int main() {
 		}
 		
 		canvas.clear();
-		for (int y = 100; y < 200; ++y) {
-			for (int x = 100; x < 200; ++x) {
-				pixelBuffer[y * 800 + x] = 0x00FFFFFF;
+		for (int y = 0; y < 32; ++y) {
+			for (int x = 0; x < 32; ++x) {
+				pixelBuffer[(py + y) * 800 + (px + x)] = 0x00FFFFFF;
 			}
 		}
 		canvas.blit();
