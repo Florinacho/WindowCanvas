@@ -7,17 +7,19 @@
 #include <dlfcn.h>
 
 #if defined(_DEBUG)
-#define ERROR(...) fprintf(stderr, __VA_ARGS__)
-#define INFO(...) fprintf(stdout, __VA_ARGS__)
+#define WC_INFO(...)     fprintf(stdout, __VA_ARGS__)
+#define WC_WARNING(...)  WC_INFO(__VA_ARGS__)
+#define WC_ERROR(...)    fprintf(stderr, __VA_ARGS__)
 #else
-#define ERROR(...)
-#define INFO(...)
+#define WC_INFO(...)     /* EMPTY */
+#define WC_WARNING(...)  /* EMPTY */
+#define WC_ERROR(...)    /* EMPTY */
 #endif
 
-/******************************************************************************/
-/** Platform specific code                                                    */
-/******************************************************************************/
 #if defined(__linux__)
+/*****************************************************************************/
+/** Linux - X11                                                              */
+/*****************************************************************************/
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -25,6 +27,8 @@
 #ifdef XDestroyImage
 #undef XDestroyImage
 #endif
+
+#define X11_LIB_NAME "libX11.so"
 
 #define X11_PROC_LIST \
 	X11_PROC(XOpenDisplay) \
@@ -80,31 +84,31 @@ struct X11 {
 		uninit();
 	}
 
-	int init(const char* filename = "libX11.so") {
+	int init(const char* filename = X11_LIB_NAME) {
 		if (handle != nullptr) {
 			return 0;
 		}
 		int count = 0;
 
 		if ((handle = dlopen(filename, RTLD_LAZY)) == nullptr) {
-			ERROR("Cannot open library '%s'.\n", filename);
+			WC_ERROR("Cannot open library '%s'.\n", filename);
 			return 1;
 		}
-		INFO("Opened dynamic library '%s', at %p.\n", filename, handle);
+		WC_INFO("Opened dynamic library '%s', at %p.\n", filename, handle);
 
 		#define X11_PROC(name) \
 		if ((name = (PFN_##name)dlsym(handle, #name)) == nullptr) {\
-			ERROR("Failed to load " #name "\n"); \
+			WC_ERROR("Failed to load " #name "\n"); \
 			uninit(); \
 			return 1;\
 		} else {\
-			INFO("Loaded function '%s', at %p.\n", #name, name); \
+			WC_INFO("Loaded function '%s', at %p.\n", #name, name); \
 			++count; \
 		}
 		X11_PROC_LIST
 		#undef X11_PROC
 
-		INFO("Successfully loaded %u functions.\n", count);
+		WC_INFO("Successfully loaded %u functions.\n", count);
 		return 0;
 	}
 
@@ -120,14 +124,113 @@ static const X11 x11;
 #undef X11_PROC_LIST
 
 #elif defined(_WIN32)
+/*****************************************************************************/
+/** Windows - GDI                                                            */
+/*****************************************************************************/
 #include <windows.h>
-#error Not implemented
+
+#define GDI_LIB_NAME "gdi32.dll"
+#define GDI_PROC_LIST \
+	GDI_PROC(CreateCompatibleDC) \
+	GDI_PROC(CreateDIBSection) \
+	GDI_PROC(SelectObject) \
+	GDI_PROC(DeleteObject) \
+	GDI_PROC(ExtFloodFill) \
+	GDI_PROC(BitBlt) \
+	/* Empty line */
+	
+/*
+	// WIN32 API
+	WIN32_PROC(RegisterClass) \
+	WIN32_PROC(SetWindowLongPtr) \
+	WIN32_PROC(GetWindowLongPtr) \
+	WIN32_PROC(DefWindowProc) \
+	WIN32_PROC(GetKeyboardState) \
+	WIN32_PROC(ToAscii) \
+	WIN32_PROC(AdjustWindowRect) \
+	WIN32_PROC(CreateWindowEx) \
+	WIN32_PROC(GetDC) \
+	
+	typedef ATOM     (*PFN_RegisterClass)(const WNDCLASSA *lpWndClass);
+	typedef LONG_PTR (*PFN_SetWindowLongPtr)(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
+	typedef LONG_PTR (*PFN_GetWindowLongPtr)(HWND hWnd, int nIndex);
+	typedef LRESULT  (*PFN_DefWindowProc)(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+	typedef BOOL     (*PFN_GetKeyboardState)(PBYTE lpKeyState);
+	typedef int      (*PFN_ToAscii)(UINT uVirtKey, UINT uScanCode, const BYTE *lpKeyState, LPWORD lpChar, UINT uFlags);
+	typedef BOOL     (*PFN_AdjustWindowRect)(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
+	typedef HWND     (*PFN_CreateWindowEx)(DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
+	typedef HDC      (*PFN_GetDC)(HWND hWnd);
+*/
+
+struct GDI {
+	typedef HDC      (__stdcall *PFN_CreateCompatibleDC)(HDC hdc);
+	typedef HBITMAP  (__stdcall *PFN_CreateDIBSection)(HDC hdc, const BITMAPINFO *pbmi, UINT usage, VOID **ppvBits, HANDLE hSection, DWORD offset);
+	typedef HGDIOBJ  (__stdcall *PFN_SelectObject)(HDC hdc, HGDIOBJ h);
+	typedef BOOL     (__stdcall *PFN_DeleteObject)(HGDIOBJ ho);
+	typedef BOOL     (__stdcall *PFN_ExtFloodFill)(HDC hdc, int x, int y, COLORREF color, UINT type);
+	typedef BOOL     (__stdcall *PFN_BitBlt)(HDC hdc, int x, int y, int cx, int cy, HDC hdcSrc, int x1, int y1, DWORD rop);
+
+	HMODULE handle;
+	
+	// Declare GDI functions
+	#define GDI_PROC(name) PFN_##name name;
+	GDI_PROC_LIST
+	#undef GDI_PROC
+
+	GDI() : handle(nullptr) {
+		init();
+	}
+
+	~GDI() {
+		uninit();
+	}
+
+	int init(const char* filename = GDI_LIB_NAME) {
+		if (handle != nullptr) {
+			return 0;
+		}
+		int count = 0;
+
+		if ((handle = LoadLibrary(filename)) == nullptr) {
+			WC_ERROR("Cannot open library '%s'.\n", filename);
+			return 1;
+		}
+		WC_INFO("Opened dynamic library '%s', at %p.\n", filename, handle);
+
+		#define GDI_PROC(name) \
+		if ((name = (PFN_##name)GetProcAddress(handle, #name)) == nullptr) {\
+			WC_ERROR("Failed to load " #name "\n"); \
+			uninit(); \
+			return 1;\
+		} else {\
+			WC_INFO("Loaded function '%s', at %p.\n", #name, name); \
+			++count; \
+		}
+		GDI_PROC_LIST
+		#undef GDI_PROC
+
+		WC_INFO("Successfully loaded %u functions.\n", count);
+		return 0;
+	}
+	
+	void uninit() {
+		if (handle != nullptr) {
+			FreeLibrary(handle);
+			handle = nullptr;
+		}
+	}
+};
+
+static const GDI gdi;
+
+#undef GDI_PROC_LIST
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	WindowCanvas* window = (WindowCanvas*)GetWindowLongPtr(hwnd, GWL_USERDATA);
 	if (window == nullptr) {
 		return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
+
 	WindowEvent& event = *window->eventPtr;
     static BYTE keyState[256];
 	char text[8];
@@ -171,7 +274,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		event.type = WindowEvent::KeyPressed;
 		event.keyCode = wParam;
 		GetKeyboardState(keyState);
-		if (ToAscii(keyCode, MapVirtualKey(keyCode, MAPVK_VK_TO_VSC), keyState, (LPWORD)text, 0) == 1) {
+		if (ToAscii(event.keyCode, MapVirtualKey(event.keyCode, MAPVK_VK_TO_VSC), keyState, (LPWORD)text, 0) == 1) {
 			switch (text[0]) {
 			case 0x1B : // escape
 			case 0x08 : // backspace
@@ -191,9 +294,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 		event.keyCode = wParam;
 		return 0;
 	}
+
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 #else
+/*****************************************************************************/
+/** Unknown platform                                                         */
+/*****************************************************************************/
 	#error "Unknown platform"
 #endif
 
@@ -202,41 +309,55 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 /******************************************************************************/
 int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, const char* title) {
 #if defined(_WIN32)
-	// Register the window class.
 	const DWORD dwstyle = WS_CAPTION | WS_POPUPWINDOW | WS_MINIMIZEBOX | WS_VISIBLE;
 
-	WNDCLASS wc = { };
+	WNDCLASS wc = {};
 	wc.lpfnWndProc   = WindowProc;
 	wc.hInstance     = GetModuleHandle(nullptr);
 	wc.lpszClassName = "Sample Window Class";
 	wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-	RegisterClass(&wc);
+	if (RegisterClass(&wc) == 0) {
+		WC_ERROR("Failed to register class.\n");
+		return 1;
+	}
 
 	RECT r = {0, 0, (LONG)width, (LONG)height};
-	AdjustWindowRect(&r, dwstyle, false);
+	if (AdjustWindowRect(&r, dwstyle, false) == 0) {
+		WC_WARNING("Failed to adjust window bounds.\n");
+	}
 
-	// Create the window.
 	hwnd = CreateWindow(wc.lpszClassName, 
-	                    "Win32 imGUI example", 
+	                    title,
 	                    dwstyle, 
 	                    0, 0, r.right - r.left, r.bottom - r.top,
 	                    nullptr,
 	                    nullptr,
 	                    wc.hInstance,
-	                    nullptr);
+	                    (LPVOID)nullptr);
 	if (hwnd == nullptr) {
-		return 1;
-	}
-	SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)this);
-
-	// Create bitmap
-	hdc = GetDC(hwnd);
-	if (hdc == 0) {
+		WC_ERROR("Failed to create window.\n");
 		return 2;
 	}
-	hDCMem = CreateCompatibleDC(hdc);
 
-	BITMAPINFO bitmapinfo = {0};
+	SetLastError(0);
+	if (SetWindowLongPtr(hwnd, GWL_USERDATA, (LONG_PTR)this) == 0) {
+		if (GetLastError() != 0) {
+			WC_ERROR("Failed to set window long pointer.\n");
+			return 3;
+		}
+	}
+
+	if ((hdc = GetDC(hwnd)) == 0) {
+		WC_ERROR("Failed to retrieve the device context.\n");
+		return 4;
+	}
+
+	if ((hDCMem = gdi.CreateCompatibleDC(hdc)) == nullptr) {
+		WC_ERROR("Failed to create compatible device context.\n");
+		return 5;
+	}
+
+	BITMAPINFO bitmapinfo = {};
 	bitmapinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	bitmapinfo.bmiHeader.biWidth = width;
 	bitmapinfo.bmiHeader.biHeight = -height;
@@ -244,44 +365,72 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 	bitmapinfo.bmiHeader.biBitCount = depth;
 
 	pixelBufferLength = width * height * depth / 8;
-	bitmap = ::CreateDIBSection(hDCMem, &bitmapinfo, DIB_RGB_COLORS, (VOID**)&pixelBuffer, nullptr, 0);
-	oldBitmap = ::SelectObject(hDCMem, bitmap);
+	if ((bitmap = gdi.CreateDIBSection(hDCMem, &bitmapinfo, DIB_RGB_COLORS, (VOID**)&pixelBuffer, nullptr, 0)) == nullptr) {
+		WC_ERROR("Failed to create bitmap.\n");
+		return 6;
+	}
+
+	oldBitmap = gdi.SelectObject(hDCMem, bitmap);
+	
+	ShowWindow(hwnd, SW_SHOW);
+	WC_INFO("Successfully created WIN32 window %ux%u.\n", width, height);
 #else // __linux__
 	static const uint32_t DEFAULT_MARGIN = 5;
-	display = x11.XOpenDisplay(nullptr);
+	if ((display = x11.XOpenDisplay(nullptr)) == nullptr) {
+		WC_ERROR("Failed to connect X server.\n");
+		return 1;
+	}
 	Visual *visual = DefaultVisual(display, 0);
-	window = x11.XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, width, height, DEFAULT_MARGIN, 0, 0);
+	if ((window = x11.XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, width, height, DEFAULT_MARGIN, 0, 0)) == 0) {
+		WC_ERROR("Failed to create simple window.\n");
+		return 2;
+	}
 	x11.XSelectInput(display, window, ExposureMask | ButtonPressMask | ButtonReleaseMask | KeyReleaseMask | KeyPressMask | PointerMotionMask);
 
 	XSizeHints sizeHints;
 	memset(&sizeHints, 0, sizeof(sizeHints));
-	x11.XGetWMNormalHints(display, window, &sizeHints, nullptr);
+	if (x11.XGetWMNormalHints(display, window, &sizeHints, nullptr) == 0) {
+		WC_WARNING("Failed to get normal hints.\n");
+	}
 	sizeHints.min_width = width;
 	sizeHints.max_width = width;
 	sizeHints.min_height = height;
 	sizeHints.max_height = height;
 	x11.XSetWMNormalHints(display, window, &sizeHints);
 
-	//XClearWindow(display, window);
 	x11.XMapRaised(display, window);
 
 	gc = x11.XCreateGC(display, window, 0, 0);
 
 	pixelBufferLength = width * height * depth / 8;
     pixelBuffer = (uint8_t*)malloc(pixelBufferLength);
-	xImage = x11.XCreateImage(display, visual, 24, ZPixmap, 0, (char*)pixelBuffer, width, height, depth, 0);
+	if ((xImage = x11.XCreateImage(display, visual, 24, ZPixmap, 0, (char*)pixelBuffer, width, height, depth, 0)) == nullptr) {
+		WC_ERROR("Failed to create xImage.\n");
+		return 3;
+	}
+	WC_INFO("Successfully created X11 window %ux%u.\n", width, height);
 #endif
 	return 0;
 }
 
 int WindowCanvas::uninitialize() {
 #if defined(_WIN32)
-	::SelectObject(hDCMem, oldBitmap);
-	DeleteObject(bitmap);
-	DeleteObject(hDCMem);
-	delete [] pixelBuffer;
-	ReleaseDC(hwnd, hdc);
-	DestroyWindow(hwnd);
+	if (hDCMem) {
+		if (oldBitmap) {
+			gdi.SelectObject(hDCMem, oldBitmap);
+		}
+		if (bitmap) {
+			gdi.DeleteObject(bitmap);
+		}
+		if (pixelBuffer) {
+			delete [] pixelBuffer;
+		}
+		gdi.DeleteObject(hDCMem);
+	}
+	if (hwnd) {
+		ReleaseDC(hwnd, hdc);
+		DestroyWindow(hwnd);
+	}
 #else // __linux__
 	if (xImage != nullptr) {
 		x11.XDestroyImage(xImage);
@@ -436,14 +585,14 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 
 void WindowCanvas::clear() {
 #if defined(_WIN32)
-	//ExtFloodFill(hdc, 0, 0, RGB(0, 0, 0), FLOODFILLSURFACE);
+	// gdi.ExtFloodFill(hdc, 0, 0, RGB(0, 0, 0), FLOODFILLSURFACE);
 #endif
 	memset(pixelBuffer, 0, pixelBufferLength);
 }
 
 void WindowCanvas::blit() {
 #if defined(_WIN32)
-	BitBlt(hdc, 0, 0, width, height, hDCMem, 0, 0, SRCCOPY);
+	gdi.BitBlt(hdc, 0, 0, width, height, hDCMem, 0, 0, SRCCOPY);
 #else // __linux__
 	x11.XPutImage(display, window, gc, xImage, 0, 0, 0, 0, width, height);
 #endif

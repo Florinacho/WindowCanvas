@@ -6,10 +6,13 @@ else
 	CC=g++
 endif
 
+CC=mingw32-g++.exe
+AR=mingw32-gcc-ar.exe
+
 INCLUDE=
 LIB_DIRS=
 LIB_FILES=
-C_FLAGS=-O3 -g3 -Wall -D_DEBUG
+C_FLAGS=-O3 -g3 -Wall -Wextra -D_DEBUG
 L_FLAGS=
 C_FILES=WindowCanvas.cpp
 
@@ -28,7 +31,9 @@ rebuild: clean build
 	$(CC) $(C_FLAGS) -c $< -o $@
 
 %.a: $(L_FILES)
-	ar rvs $@ $(L_FILES) $(L_FLAGS)
+	$(AR) rvs $@ $(L_FILES) $(L_FLAGS)
 
+dep:
+	sudo apt-get install libx11-dev
 
 .PHONY:

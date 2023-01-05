@@ -6,10 +6,13 @@ else
 	OUTPUT=../bin/main.out
 endif
 
+CC=mingw32-g++.exe
+OUTPUT=../bin/mainE.exe
+
 INCLUDE=../source
 LIB_DIRS=../bin
 LIB_FILES=wcanvas
-C_FLAGS=-O3 -g3 -Wall
+C_FLAGS=-O3 -g3 -Wall -Wextra 
 L_FLAGS=
 C_FILES=main.cpp
 

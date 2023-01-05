@@ -5,6 +5,8 @@
 
 #if defined (__linux__) 
 #include <X11/Xlib.h>
+#elif defined (_WIN32)
+#include <windows.h>
 #endif
 
 struct WindowEvent {
