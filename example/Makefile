@@ -6,9 +6,6 @@ else
 	OUTPUT=../bin/main.out
 endif
 
-CC=mingw32-g++.exe
-OUTPUT=../bin/mainE.exe
-
 INCLUDE=../source
 LIB_DIRS=../bin
 LIB_FILES=wcanvas

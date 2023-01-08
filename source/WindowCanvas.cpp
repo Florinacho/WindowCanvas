@@ -37,6 +37,7 @@
 	X11_PROC(XFreeGC) \
 	X11_PROC(XCreateSimpleWindow) \
 	X11_PROC(XDestroyWindow) \
+	X11_PROC(XStoreName) \
 	X11_PROC(XSelectInput) \
 	X11_PROC(XGetWMNormalHints) \
 	X11_PROC(XSetWMNormalHints) \
@@ -55,6 +56,7 @@ struct X11 {
 	typedef void     (*PFN_XCloseDisplay)(Display*);
 	typedef Window   (*PFN_XCreateSimpleWindow)(Display*, Window, int, int, unsigned int, unsigned int, unsigned int, unsigned long, unsigned long);
 	typedef int      (*PFN_XDestroyWindow)(Display*, Window);
+	typedef int      (*PFN_XStoreName)(Display *display, Window w, char *window_name); 
 	typedef int      (*PFN_XSelectInput)(Display*, Window, long);
 	typedef int      (*PFN_XMapRaised)(Display*, Window);
 	typedef int      (*PFN_XPending)(Display*);
@@ -385,6 +387,7 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 		WC_ERROR("Failed to create simple window.\n");
 		return 2;
 	}
+	x11.XStoreName(display, window, (char*)title);
 	x11.XSelectInput(display, window, ExposureMask | ButtonPressMask | ButtonReleaseMask | KeyReleaseMask | KeyPressMask | PointerMotionMask);
 
 	XSizeHints sizeHints;
@@ -477,7 +480,7 @@ void WindowCanvas::setTitle(const char* title) {
 #if defined(_WIN32)
 	SetWindowText(hwnd, title);
 #else // __linux__
-	assert(!"Not implemented");
+	x11.XStoreName(display, window, (char*)title);
 #endif
 }
 

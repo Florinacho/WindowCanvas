@@ -2,12 +2,11 @@ OUTPUT=../bin/libwcanvas.a
 
 ifeq ($(OS),Windows_NT)
 	CC=mingw32-g++.exe
+	AR=mingw32-gcc-ar.exe
 else
 	CC=g++
+	AR=ar
 endif
-
-CC=mingw32-g++.exe
-AR=mingw32-gcc-ar.exe
 
 INCLUDE=
 LIB_DIRS=
