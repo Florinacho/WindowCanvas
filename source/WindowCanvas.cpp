@@ -43,11 +43,14 @@
 	X11_PROC(XSetWMNormalHints) \
 	X11_PROC(XMapRaised) \
 	X11_PROC(XPending) \
+	X11_PROC(XSendEvent) \
 	X11_PROC(XNextEvent) \
 	X11_PROC(XLookupString) \
 	X11_PROC(XCreateImage) \
 	X11_PROC(XPutImage) \
 	X11_PROC(XDestroyImage) \
+	X11_PROC(XInternAtom) \
+	X11_PROC(XSetWMProtocols) \
 	/* EMPTY_LINE */
 
 struct X11 {
@@ -60,6 +63,7 @@ struct X11 {
 	typedef int      (*PFN_XSelectInput)(Display*, Window, long);
 	typedef int      (*PFN_XMapRaised)(Display*, Window);
 	typedef int      (*PFN_XPending)(Display*);
+	typedef Status   (*PFN_XSendEvent)(Display *display, Window w, Bool propagate, long event_mask, XEvent *event_send); 
 	typedef int      (*PFN_XNextEvent)(Display*, XEvent*); 
 	typedef int      (*PFN_XLookupString)(XKeyEvent*, char*, int, KeySym*, XComposeStatus*);
 	typedef Status   (*PFN_XGetWMNormalHints)(Display*, Window, XSizeHints*, long*);
@@ -69,6 +73,8 @@ struct X11 {
 	typedef XImage*  (*PFN_XCreateImage)(Display*, Visual*, unsigned int, int, int, char*, unsigned int, unsigned int, int, int);
 	typedef int      (*PFN_XPutImage)(Display*, Drawable, GC, XImage*, int, int, int, int, unsigned int, unsigned int); 
 	typedef int      (*PFN_XDestroyImage)(XImage*);
+	typedef Atom     (*PFN_XInternAtom)(Display *display, const char *atom_name, Bool only_if_exists); 
+	typedef Status   (*PFN_XSetWMProtocols)(Display *display, Window w, Atom *protocols, int count); 
 
 	void* handle;
 
@@ -382,8 +388,7 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 		WC_ERROR("Failed to connect X server.\n");
 		return 1;
 	}
-	Visual *visual = DefaultVisual(display, 0);
-	if ((window = x11.XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, width, height, DEFAULT_MARGIN, 0, 0)) == 0) {
+	if ((window = x11.XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, width, height, DEFAULT_MARGIN, 0, 0)) == None) {
 		WC_ERROR("Failed to create simple window.\n");
 		return 2;
 	}
@@ -401,13 +406,15 @@ int WindowCanvas::initialize(uint32_t width, uint32_t height, uint8_t depth, con
 	sizeHints.max_height = height;
 	x11.XSetWMNormalHints(display, window, &sizeHints);
 
+    wm_delete_window = x11.XInternAtom(display, "WM_DELETE_WINDOW", False);
+    x11.XSetWMProtocols(display, window, &wm_delete_window, 1);
 	x11.XMapRaised(display, window);
 
 	gc = x11.XCreateGC(display, window, 0, 0);
 
 	pixelBufferLength = width * height * depth / 8;
     pixelBuffer = (uint8_t*)malloc(pixelBufferLength);
-	if ((xImage = x11.XCreateImage(display, visual, 24, ZPixmap, 0, (char*)pixelBuffer, width, height, depth, 0)) == nullptr) {
+	if ((xImage = x11.XCreateImage(display, DefaultVisual(display, 0), 24, ZPixmap, 0, (char*)pixelBuffer, width, height, depth, 0)) == nullptr) {
 		WC_ERROR("Failed to create xImage.\n");
 		return 3;
 	}
@@ -523,6 +530,12 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 	if (x11.XPending(display) > 0) {
 		x11.XNextEvent(display, &xEvent);
 		switch (xEvent.type) {
+		case ClientMessage:
+			if((Atom)xEvent.xclient.data.l[0] == wm_delete_window) {
+				event.type = WindowEvent::WindowClose;
+				ans = true;
+			}
+			break;
 		case KeyPress :
 			event.type = WindowEvent::KeyPressed;
 			event.keyCode = xEvent.xkey.keycode;

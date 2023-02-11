@@ -1,2 +1,6 @@
 # WindowCanvas
-Cross-platform window with pixel buffer access.
+Cross-platform window with blitting.  
+
+## Supported platforms:  
+ - Windows (WIN32)
+ - Linux (X11)

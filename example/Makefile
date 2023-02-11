@@ -7,7 +7,7 @@ else
 endif
 
 INCLUDE=../source
-LIB_DIRS=../bin
+LIB_DIRS=../lib
 LIB_FILES=wcanvas
 C_FLAGS=-O3 -g3 -Wall -Wextra 
 L_FLAGS=

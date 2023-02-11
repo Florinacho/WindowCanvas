@@ -57,6 +57,7 @@ class WindowCanvas {
 	Window window;
 	GC gc;
 	XImage* xImage;
+    Atom wm_delete_window;
 #endif
 	int initialize(uint32_t width, uint32_t height, uint8_t depth, const char* title);
 	int uninitialize();

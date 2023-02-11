@@ -1,4 +1,4 @@
-OUTPUT=../bin/libwcanvas.a
+OUTPUT=../lib/libwcanvas.a
 
 ifeq ($(OS),Windows_NT)
 	CC=mingw32-g++.exe
