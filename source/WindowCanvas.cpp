@@ -546,6 +546,9 @@ bool WindowCanvas::getEvent(WindowEvent& event) {
 				case 0x7F : // delete
 					event.ascii = '\0';
 					break;
+				case 0xD :
+					event.ascii = '\n';
+					break;
 				default :
 					event.ascii = text[0];
 					break;
